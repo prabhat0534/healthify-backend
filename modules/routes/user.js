@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Scan = require('../models/Scan');
-const User = require('../models/User'); // This path is now correct
+const User = require('../models/user'); // This path is now correct
 const authMiddleware = require('../middleware/authMiddleware');
 
 // GET /api/user/summary

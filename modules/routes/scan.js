@@ -2,38 +2,37 @@ const express = require('express');
 const multer = require('multer');
 const axios = require('axios');
 const FormData = require('form-data');
-const fs = require('fs');
-const path = require('path');
+// We no longer need 'fs' or 'path'
+// const fs = require('fs');
+// const path = require('path');
 
-// Import the new Scan model and auth middleware
-const Scan = require('../models/Scan'); // Correct path
-const authMiddleware = require('../middleware/authMiddleware'); // Correct path
+const Scan = require('../models/Scan');
+const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// Create an 'uploads' directory if it doesn't exist
-const uploadDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)){
-    fs.mkdirSync(uploadDir);
-}
+// --- THIS IS THE FIX ---
+// Use memoryStorage to handle the file as a buffer in memory
+// instead of saving it to disk.
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+// --- END OF FIX ---
 
-// Set up multer to temporarily save uploaded files in the 'uploads' folder
-const upload = multer({ dest: uploadDir });
-
-// Protect this route with our new middleware
-// We also save the scan to the database
+// We still use authMiddleware and upload.single('image')
 router.post('/', authMiddleware, upload.single('image'), async (req, res) => {
   
   if (!req.file) {
     return res.status(400).json({ error: 'No image file uploaded.' });
   }
 
-  const tempFilePath = req.file.path;
-
   try {
+    // 1. Create a form to send to the CalorieNinjas API
     const formData = new FormData();
-    formData.append('image', fs.createReadStream(tempFilePath));
+    // 2. Append the file *buffer* from memory
+    // We also must provide a filename for the API
+    formData.append('image', req.file.buffer, { filename: req.file.originalname });
 
+    // 3. Call the external API with your secret key
     const apiResponse = await axios.post(
       'https://api.calorieninjas.com/v1/imagetextnutrition', 
       formData, 
@@ -45,8 +44,9 @@ router.post('/', authMiddleware, upload.single('image'), async (req, res) => {
       }
     );
 
-    fs.unlinkSync(tempFilePath);
-
+    // 4. We no longer need to delete a temporary file
+    
+    // 5. Format their response
     const items = apiResponse.data.items || [];
     let totals = { calories: 0, protein: 0, carb: 0, fat: 0 };
     
@@ -67,27 +67,30 @@ router.post('/', authMiddleware, upload.single('image'), async (req, res) => {
       items: items
     };
 
-    // --- NEW DATABASE LOGIC ---
-    // Save the scan to the database, linking it to the logged-in user
+    // 6. Save the scan to the database
     if (items.length > 0) {
       await Scan.create({
-        user: req.user._id, // req.user comes from the authMiddleware
+        user: req.user._id,
         items: items,
         totals: totals,
         advice: advice
       });
     }
-    // --- END NEW DATABASE LOGIC ---
 
-    // Send the real data back to your React app
+    // 7. Send the real data back to your React app
     res.json(responseData);
 
   } catch (error) {
-    console.error('API call failed:', error.response ? error.response.data : error.message);
-    if (fs.existsSync(tempFilePath)) {
-      fs.unlinkSync(tempFilePath); 
+    // Check for a more specific error from CalorieNinjas
+    if (error.response && error.response.data) {
+      console.error('API call failed:', error.response.data);
+    } else {
+      console.error('Scan route failed:', error.message);
     }
-    res.status(500).json({ error: 'Failed to analyze image.' });
+    
+    // Send a clearer error message to the frontend if possible
+    const apiErrorMessage = error.response?.data?.message || 'Failed to analyze image.';
+    res.status(500).json({ error: apiErrorMessage });
   }
 });
 
