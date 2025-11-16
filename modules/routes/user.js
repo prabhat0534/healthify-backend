@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const Scan = require('../models/Scan');
-const User = require('../models/user'); // This path is now correct
+const Scan = require('../models/Scan'); // Correct path
+const User = require('../models/User'); // Correct path
 const authMiddleware = require('../middleware/authMiddleware');
 
-// GET /api/user/summary
 router.get('/summary', authMiddleware, async (req, res) => {
   try {
     const user = req.user;
