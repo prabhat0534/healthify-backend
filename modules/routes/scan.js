@@ -32,6 +32,11 @@ router.post('/', authMiddleware, upload.single('image'), async (req, res) => {
     // We also must provide a filename for the API
     formData.append('image', req.file.buffer, { filename: req.file.originalname });
 
+    // --- NEW DEBUGGING LINE ---
+    // Let's print the key to the logs to see if it's correct
+    console.log('Using API Key:', process.env.NINJA_API_KEY);
+    // --- END DEBUGGING LINE ---
+
     // 3. Call the external API with your secret key
     const apiResponse = await axios.post(
       'https://api.calorieninjas.com/v1/imagetextnutrition', 
